@@ -48,6 +48,8 @@ func (c *ChatComponentMixed) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+
+
 // Minecraft 颜色代码映射到 ANSI 终端颜色代码
 var minecraftColorMap = map[string]string{
 	"black":        "\033[30m",
@@ -78,6 +80,54 @@ var legacyColorMap = map[rune]string{
 }
 
 const ansiReset = "\033[0m" // ANSI 重置样式
+
+// 添加在 legacyColorMap 常量之后
+
+// Windows Console 颜色定义
+var windowsConsoleColors = []struct {
+    r, g, b uint8
+    code    string
+}{
+    {0, 0, 0, "\033[30m"},       // 黑色
+    {128, 0, 0, "\033[31m"},     // 深红
+    {0, 128, 0, "\033[32m"},     // 深绿
+    {128, 128, 0, "\033[33m"},   // 深黄
+    {0, 0, 128, "\033[34m"},     // 深蓝
+    {128, 0, 128, "\033[35m"},   // 深紫
+    {0, 128, 128, "\033[36m"},   // 深青
+    {192, 192, 192, "\033[37m"}, // 灰色
+    {128, 128, 128, "\033[90m"}, // 深灰
+    {255, 0, 0, "\033[91m"},     // 红色
+    {0, 255, 0, "\033[92m"},     // 绿色
+    {255, 255, 0, "\033[93m"},   // 黄色
+    {0, 0, 255, "\033[94m"},     // 蓝色
+    {255, 0, 255, "\033[95m"},   // 紫色
+    {0, 255, 255, "\033[96m"},   // 青色
+    {255, 255, 255, "\033[97m"}, // 白色
+}
+
+// RGB颜色到Windows Console颜色的转换
+func rgbToConsoleColor(r, g, b uint8) string {
+    minDist := uint32(255*255*3) + 1
+    bestCode := "\033[37m" // 默认为灰色
+
+    for _, color := range windowsConsoleColors {
+        // 计算RGB距离
+        dr := int32(r) - int32(color.r)
+        dg := int32(g) - int32(color.g)
+        db := int32(b) - int32(color.b)
+        dist := uint32(dr*dr + dg*dg + db*db)
+        
+        if dist < minDist {
+            minDist = dist
+            bestCode = color.code
+        }
+    }
+    
+    return bestCode
+}
+
+
 
 // 将十六进制颜色值转换为 ANSI 颜色代码
 func hexToANSI(hex string) string {
