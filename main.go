@@ -81,8 +81,6 @@ var legacyColorMap = map[rune]string{
 
 const ansiReset = "\033[0m" // ANSI 重置样式
 
-// 添加在 legacyColorMap 常量之后
-
 // Windows Console 颜色定义
 var windowsConsoleColors = []struct {
     r, g, b uint8
