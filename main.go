@@ -1,12 +1,13 @@
-// Author: YF_Eternal
-// Project: minecraft-je-motd
-// Version: 1.0.0
-// License: MIT
-// Description: A command-line tool to fetch and display Minecraft Java Edition server MOTD.
-// Github: https://github.com/YF-Eternal/minecraft-je-motd/
+// 作者: YF_Eternal
+// 项目: minecraft-je-motd
+// 版本: 1.0.1
+// 许可: MIT
+// 描述: 一个命令行工具，用于获取并展示 Minecraft Java 版服务器的 MOTD 信息。
+// 仓库: https://github.com/YF-Eternal/minecraft-je-motd/
 
 package main
 
+// 导入所需标准库
 import (
 	"bytes"
 	"encoding/binary"
@@ -21,17 +22,20 @@ import (
 	"time"
 )
 
+// 表示聊天组件的结构体（用于解析 JSON）
 type ChatComponent struct {
-	Text  string               `json:"text,omitempty"`
-	Color string               `json:"color,omitempty"`
-	Extra []ChatComponentMixed `json:"extra,omitempty"`
+	Text  string               `json:"text,omitempty"`  // 文本内容
+	Color string               `json:"color,omitempty"` // 文本颜色
+	Extra []ChatComponentMixed `json:"extra,omitempty"` // 嵌套组件
 }
 
+// 聊天组件的多种可能格式（组件或纯字符串）
 type ChatComponentMixed struct {
-	TextComponent *ChatComponent
-	RawString     string
+	TextComponent *ChatComponent // 若为组件
+	RawString     string         // 若为纯字符串
 }
 
+// 实现自定义反序列化逻辑以处理不同格式的聊天组件
 func (c *ChatComponentMixed) UnmarshalJSON(data []byte) error {
 	if data[0] == '"' {
 		return json.Unmarshal(data, &c.RawString)
@@ -44,6 +48,7 @@ func (c *ChatComponentMixed) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// Minecraft 颜色代码映射到 ANSI 终端颜色代码
 var minecraftColorMap = map[string]string{
 	"black":        "\033[30m",
 	"dark_blue":    "\033[34m",
@@ -63,6 +68,7 @@ var minecraftColorMap = map[string]string{
 	"white":        "\033[97m",
 }
 
+// Minecraft 传统样式颜色码 (§) 映射
 var legacyColorMap = map[rune]string{
 	'0': "\033[30m", '1': "\033[34m", '2': "\033[32m", '3': "\033[36m",
 	'4': "\033[31m", '5': "\033[35m", '6': "\033[33m", '7': "\033[37m",
@@ -71,8 +77,9 @@ var legacyColorMap = map[rune]string{
 	'l': "\033[1m", 'o': "\033[3m", 'n': "\033[4m", 'm': "\033[9m", 'r': "\033[0m",
 }
 
-const ansiReset = "\033[0m"
+const ansiReset = "\033[0m" // ANSI 重置样式
 
+// 将十六进制颜色值转换为 ANSI 颜色代码
 func hexToANSI(hex string) string {
 	if len(hex) != 7 || hex[0] != '#' {
 		return ""
@@ -83,6 +90,7 @@ func hexToANSI(hex string) string {
 	return fmt.Sprintf("\033[38;2;%d;%d;%dm", r, g, b)
 }
 
+// 获取颜色名称或十六进制颜色的 ANSI 码
 func getColorANSI(color string) string {
 	if strings.HasPrefix(color, "#") {
 		return hexToANSI(color)
@@ -93,6 +101,7 @@ func getColorANSI(color string) string {
 	return ""
 }
 
+// 解析传统样式颜色字符串（带有 § 符号的）
 func parseLegacyColorString(s string) string {
 	var builder strings.Builder
 	runes := []rune(s)
@@ -111,6 +120,7 @@ func parseLegacyColorString(s string) string {
 	return builder.String()
 }
 
+// 递归提取聊天组件中的纯文本内容
 func parseChatComponentPlain(component ChatComponent) string {
 	var builder strings.Builder
 	builder.WriteString(component.Text)
@@ -124,6 +134,7 @@ func parseChatComponentPlain(component ChatComponent) string {
 	return builder.String()
 }
 
+// 递归提取并着色聊天组件内容
 func parseChatComponentColored(component ChatComponent) string {
 	var builder strings.Builder
 	colorCode := getColorANSI(component.Color)
@@ -142,6 +153,7 @@ func parseChatComponentColored(component ChatComponent) string {
 	return builder.String()
 }
 
+// 写入 VarInt 编码（Minecraft 协议所用）
 func writeVarInt(buf *bytes.Buffer, value int) {
 	for {
 		temp := byte(value & 0x7F)
@@ -156,6 +168,7 @@ func writeVarInt(buf *bytes.Buffer, value int) {
 	}
 }
 
+// 读取 VarInt 编码
 func readVarInt(r io.Reader) (int, error) {
 	var num, numRead int
 	for {
@@ -177,6 +190,7 @@ func readVarInt(r io.Reader) (int, error) {
 	return num, nil
 }
 
+// 建立连接并获取服务器状态 JSON 与响应延迟
 func getServerStatus(host string, port uint16) (string, time.Duration, error) {
 	address := fmt.Sprintf("[%s]:%d", host, port)
 	conn, err := net.DialTimeout("tcp", address, 5*time.Second)
@@ -185,14 +199,16 @@ func getServerStatus(host string, port uint16) (string, time.Duration, error) {
 	}
 	defer conn.Close()
 
+	// 构建握手数据包
 	var handshake bytes.Buffer
 	handshake.WriteByte(0x00)
-	writeVarInt(&handshake, 754) // Protocol version
+	writeVarInt(&handshake, 754) // 协议版本
 	writeVarInt(&handshake, len(host))
 	handshake.WriteString(host)
 	binary.Write(&handshake, binary.BigEndian, port)
-	writeVarInt(&handshake, 1) // Status
+	writeVarInt(&handshake, 1) // 状态请求
 
+	// 发送握手包
 	var packet bytes.Buffer
 	writeVarInt(&packet, handshake.Len())
 	packet.Write(handshake.Bytes())
@@ -201,10 +217,10 @@ func getServerStatus(host string, port uint16) (string, time.Duration, error) {
 	// 发送状态请求
 	conn.Write([]byte{0x01, 0x00})
 
-	// 开始计时
+	// 计时开始
 	start := time.Now()
 
-	// 读取响应
+	// 接收响应
 	length, err := readVarInt(conn)
 	if err != nil {
 		return "", 0, err
@@ -217,8 +233,8 @@ func getServerStatus(host string, port uint16) (string, time.Duration, error) {
 	ping := time.Since(start)
 
 	dataBuf := bytes.NewBuffer(data)
-	_, _ = readVarInt(dataBuf)        // Packet ID
-	jsonLen, _ := readVarInt(dataBuf) // JSON length
+	_, _ = readVarInt(dataBuf)        // 丢弃 Packet ID
+	jsonLen, _ := readVarInt(dataBuf) // 读取 JSON 长度
 
 	jsonData := make([]byte, jsonLen)
 	_, err = io.ReadFull(dataBuf, jsonData)
@@ -229,12 +245,22 @@ func getServerStatus(host string, port uint16) (string, time.Duration, error) {
 	return string(jsonData), ping, nil
 }
 
+// 将域名解析为 IP 地址
 func resolveHostToIP(host string) string {
 	ips, err := net.LookupHost(host)
 	if err != nil {
 		return "无法解析 IP 地址"
 	}
-	return ips[0] // 返回第一个解析到的 IP 地址
+	return ips[0]
+}
+
+// 尝试解析 Minecraft 的 SRV 记录获取实际主机名与端口
+func resolveMinecraftSRV(name string) (host string, port uint16, err error) {
+	_, addrs, err := net.LookupSRV("minecraft", "tcp", name)
+	if err != nil || len(addrs) == 0 {
+		return name, 25565, nil // 无 SRV 记录时使用默认端口
+	}
+	return strings.TrimSuffix(addrs[0].Target, "."), addrs[0].Port, nil
 }
 
 func main() {
@@ -244,12 +270,14 @@ func main() {
 		showText  bool
 	)
 
+	// 定义命令行参数
 	flag.BoolVar(&debug, "debug", false, "显示全部 MOTD 信息（包括原始 JSON、彩色样式、纯文本）")
 	flag.BoolVar(&showColor, "color", false, "")
 	flag.BoolVar(&showColor, "c", false, "")
 	flag.BoolVar(&showText, "text", false, "")
 	flag.BoolVar(&showText, "t", false, "")
 
+	// 自定义帮助信息
 	flag.Usage = func() {
 		fmt.Println("用法:")
 		fmt.Println("    motd [选项] <地址>[:端口]")
@@ -268,12 +296,12 @@ func main() {
 		fmt.Println("")
 		fmt.Println("关于:")
 		fmt.Println("    minecraft-je-motd")
-		fmt.Println("    版本: 1.0.0")
+		fmt.Println("    版本: 1.0.1")
 		fmt.Println("    作者: YF_Eternal")
 		fmt.Println("    Github: https://github.com/YF-Eternal/minecraft-je-motd/")
 	}
 
-	// 支持 --help 手动触发
+	// 手动处理 --help 参数
 	for _, arg := range os.Args {
 		if arg == "--help" {
 			flag.Usage()
@@ -290,14 +318,24 @@ func main() {
 
 	addr := flag.Args()[0]
 	parts := strings.Split(addr, ":")
-	if len(parts) == 1 {
-		parts = append(parts, "25565") // 默认端口
-	}
 	host := parts[0]
-	port, err := strconv.ParseUint(parts[1], 10, 16)
-	if err != nil {
-		fmt.Println("无效的端口:", err)
-		os.Exit(1)
+	var port uint16 = 25565
+
+	// 如果指定了端口，进行解析
+	if len(parts) == 2 {
+		p, err := strconv.ParseUint(parts[1], 10, 16)
+		if err != nil {
+			fmt.Println("无效的端口:", err)
+			os.Exit(1)
+		}
+		port = uint16(p)
+	} else {
+		// 未指定端口，尝试解析 SRV 记录
+		srvHost, srvPort, err := resolveMinecraftSRV(host)
+		if err == nil {
+			host = srvHost
+			port = srvPort
+		}
 	}
 
 	ip := resolveHostToIP(host)
@@ -309,6 +347,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	// 解析服务器状态 JSON
 	var data struct {
 		Version struct {
 			Name     string `json:"name"`
@@ -326,19 +365,23 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 输出描述
-	if descComponent, ok := data.Description.(map[string]interface{}); ok {
+	// 提前打印原始 JSON（debug 模式下）
+	if debug {
+		fmt.Println("\n原始 JSON 数据:")
+		fmt.Println(jsonStr)
+	}
+
+	// 解析并显示 MOTD 描述信息
+	switch desc := data.Description.(type) {
+	case map[string]interface{}:
+		// JSON 对象类型
 		var description ChatComponent
-		descJson, _ := json.Marshal(descComponent)
-		err := json.Unmarshal(descJson, &description)
-		if err != nil {
+		descJson, _ := json.Marshal(desc)
+		if err := json.Unmarshal(descJson, &description); err != nil {
 			fmt.Println("描述内容解析失败:", err)
 			os.Exit(1)
 		}
-
 		if debug {
-			fmt.Println("\n原始 JSON 数据:")
-			fmt.Println(jsonStr)
 			fmt.Println("\n纯文本 MOTD:")
 			fmt.Println(parseChatComponentPlain(description))
 			fmt.Println("\n彩色 MOTD:")
@@ -349,14 +392,24 @@ func main() {
 			fmt.Println("\n" + parseChatComponentColored(description))
 		}
 
-	} else if strDesc, ok := data.Description.(string); ok {
-		if showText || debug {
-			fmt.Println("\n" + parseLegacyColorString(strDesc))
+	case string:
+		// 字符串类型（带 § 的旧版）
+		if debug {
+			fmt.Println("\n纯文本 MOTD:")
+			fmt.Println(desc)
+			fmt.Println("\n彩色 MOTD:")
+			fmt.Println(parseLegacyColorString(desc))
+		} else if showText {
+			fmt.Println("\n" + desc)
 		} else {
-			fmt.Println("\n" + parseLegacyColorString(strDesc))
+			fmt.Println("\n" + parseLegacyColorString(desc))
 		}
+
+	default:
+		fmt.Println("未知描述格式，跳过 MOTD 解析。")
 	}
 
+	// 显示服务器基本信息
 	fmt.Printf("\n版本: %s (协议号: %d)\n", data.Version.Name, data.Version.Protocol)
 	fmt.Printf("玩家: %d / %d\n", data.Players.Online, data.Players.Max)
 	fmt.Printf("延迟: %dms\n", ping.Milliseconds())
