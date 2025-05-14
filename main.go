@@ -1,3 +1,10 @@
+// Author: YF_Eternal
+// Project: minecraft-je-motd
+// Version: 1.0.0
+// License: MIT
+// Description: A command-line tool to fetch and display Minecraft Java Edition server MOTD.
+// Github: https://github.com/YF-Eternal/minecraft-je-motd/
+
 package main
 
 import (
@@ -171,7 +178,7 @@ func readVarInt(r io.Reader) (int, error) {
 }
 
 func getServerStatus(host string, port uint16) (string, time.Duration, error) {
-	address := fmt.Sprintf("%s:%d", host, port)
+	address := fmt.Sprintf("[%s]:%d", host, port)
 	conn, err := net.DialTimeout("tcp", address, 5*time.Second)
 	if err != nil {
 		return "", 0, err
@@ -231,24 +238,60 @@ func resolveHostToIP(host string) string {
 }
 
 func main() {
-	debug := flag.Bool("debug", false, "输出调试信息")
-	flag.Parse()
+	var (
+		debug     bool
+		showColor bool
+		showText  bool
+	)
 
-	if len(flag.Args()) < 1 {
+	flag.BoolVar(&debug, "debug", false, "显示全部 MOTD 信息（包括原始 JSON、彩色样式、纯文本）")
+	flag.BoolVar(&showColor, "color", false, "")
+	flag.BoolVar(&showColor, "c", false, "")
+	flag.BoolVar(&showText, "text", false, "")
+	flag.BoolVar(&showText, "t", false, "")
+
+	flag.Usage = func() {
 		fmt.Println("用法:")
-		fmt.Println("    motd mc.example.com:25565")
-		fmt.Println("    motd --debug mc.example.com:25565")
+		fmt.Println("    motd [选项] <地址>[:端口]")
+		fmt.Println("    (如未指定端口，默认使用 25565)")
 		fmt.Println("")
-		fmt.Println("关于 minecraft-je-motd:")
+		fmt.Println("选项:")
+		fmt.Println("    --debug           显示全部 MOTD 信息(包括原始 JSON、彩色样式、纯文本)")
+		fmt.Println("    -c, --color       显示彩色 MOTD 样式(默认)")
+		fmt.Println("    -t, --text        显示纯文本 MOTD 样式(适合老旧终端)")
+		fmt.Println("    -h, --help        显示此帮助信息")
+		fmt.Println("")
+		fmt.Println("示例:")
+		fmt.Println("    motd mc.example.com:25565")
+		fmt.Println("    motd --debug mc.example.com")
+		fmt.Println("    motd -t mc.example.com")
+		fmt.Println("")
+		fmt.Println("关于:")
+		fmt.Println("    minecraft-je-motd")
 		fmt.Println("    版本: 1.0.0")
 		fmt.Println("    作者: YF_Eternal")
 		fmt.Println("    Github: https://github.com/YF-Eternal/minecraft-je-motd/")
+	}
+
+	// 支持 --help 手动触发
+	for _, arg := range os.Args {
+		if arg == "--help" {
+			flag.Usage()
+			os.Exit(0)
+		}
+	}
+
+	flag.Parse()
+
+	if len(flag.Args()) < 1 {
+		flag.Usage()
 		os.Exit(1)
 	}
 
-	parts := strings.Split(flag.Args()[0], ":")
-	if len(parts) != 2 {
-		parts = append(parts, "25565") // 如果没有指定端口，默认使用 25565
+	addr := flag.Args()[0]
+	parts := strings.Split(addr, ":")
+	if len(parts) == 1 {
+		parts = append(parts, "25565") // 默认端口
 	}
 	host := parts[0]
 	port, err := strconv.ParseUint(parts[1], 10, 16)
@@ -257,7 +300,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 解析域名为 IP 地址
 	ip := resolveHostToIP(host)
 	fmt.Printf("正在尝试获取 %s [%s:%d] 的 MOTD 信息...\n", host, ip, port)
 
@@ -281,18 +323,10 @@ func main() {
 	err = json.Unmarshal([]byte(jsonStr), &data)
 	if err != nil {
 		fmt.Println("JSON 解析失败:", err)
-		// 尝试直接处理描述部分
-		if strDesc, ok := data.Description.(string); ok {
-			// 如果是纯文本，则显示
-			fmt.Println("纯文本 MOTD:")
-			fmt.Println(parseLegacyColorString(strDesc))
-		} else {
-			fmt.Println("描述内容无法解析")
-		}
 		os.Exit(1)
 	}
 
-	// 如果 Description 是 ChatComponent 类型
+	// 输出描述
 	if descComponent, ok := data.Description.(map[string]interface{}); ok {
 		var description ChatComponent
 		descJson, _ := json.Marshal(descComponent)
@@ -301,21 +335,26 @@ func main() {
 			fmt.Println("描述内容解析失败:", err)
 			os.Exit(1)
 		}
-		if *debug {
-			// 调试信息输出
+
+		if debug {
 			fmt.Println("\n原始 JSON 数据:")
 			fmt.Println(jsonStr)
-			fmt.Println("\n纯文本 MOTD: ")
+			fmt.Println("\n纯文本 MOTD:")
 			fmt.Println(parseChatComponentPlain(description))
-			fmt.Println("\n修正后 MOTD: ")
+			fmt.Println("\n彩色 MOTD:")
 			fmt.Println(parseChatComponentColored(description))
+		} else if showText {
+			fmt.Println("\n" + parseChatComponentPlain(description))
+		} else {
+			fmt.Println("\n" + parseChatComponentColored(description))
 		}
-		// 输出修正后的 MOTD
-		fmt.Println("")
-		fmt.Println(parseChatComponentColored(description))
+
 	} else if strDesc, ok := data.Description.(string); ok {
-		fmt.Println("")
-		fmt.Println(parseLegacyColorString(strDesc))
+		if showText || debug {
+			fmt.Println("\n" + parseLegacyColorString(strDesc))
+		} else {
+			fmt.Println("\n" + parseLegacyColorString(strDesc))
+		}
 	}
 
 	fmt.Printf("\n版本: %s (协议号: %d)\n", data.Version.Name, data.Version.Protocol)

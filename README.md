@@ -32,4 +32,16 @@
 运行以下命令获取服务器的 MOTD 信息：
 
 ```bash
-motd.exe mc.example.com:25565
+motd mc.example.com
+```
+```text
+用法:
+    motd [选项] <地址>[:端口]
+    (如未指定端口，默认使用 25565)
+
+选项:
+    --debug           显示全部 MOTD 信息(包括原始 JSON、彩色样式、纯文本)
+    -c, --color       显示彩色 MOTD 样式(默认)
+    -t, --text        显示纯文本 MOTD 样式(适合老旧终端)
+    -h, --help        显示此帮助信息
+```
