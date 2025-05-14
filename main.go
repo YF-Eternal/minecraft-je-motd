@@ -16,11 +16,21 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 )
+
+// 添加用于解析阿里 DNS JSON 响应的结构体
+type DNSResponse struct {
+	Status int `json:"Status"`
+	Answer []struct {
+		Type int    `json:"type"`
+		Data string `json:"data"`
+	} `json:"Answer"`
+}
 
 // 表示聊天组件的结构体（用于解析 JSON）
 type ChatComponent struct {
@@ -46,6 +56,52 @@ func (c *ChatComponentMixed) UnmarshalJSON(data []byte) error {
 	}
 	c.TextComponent = &comp
 	return nil
+}
+
+func resolveMinecraftSRV(name string) (host string, port uint16, err error) {
+	// 首先尝试通过阿里 DNS 进行解析
+	url := fmt.Sprintf("https://223.5.5.5/resolve?name=_minecraft._tcp.%s&type=srv", name)
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	fmt.Printf("正在尝试通过阿里 DNS 解析 SRV 记录...\n")
+	resp, err := client.Get(url)
+	if err == nil {
+		defer resp.Body.Close()
+		var dnsResp DNSResponse
+		if err := json.NewDecoder(resp.Body).Decode(&dnsResp); err == nil {
+			// 检查是否有 Answer
+			if len(dnsResp.Answer) > 0 {
+				for _, ans := range dnsResp.Answer {
+					if ans.Type == 33 { // SRV 记录的类型是 33
+						// SRV 记录格式: priority weight port target
+						parts := strings.Fields(ans.Data)
+						if len(parts) == 4 {
+							if p, err := strconv.ParseUint(parts[2], 10, 16); err == nil {
+								resolvedHost := strings.TrimSuffix(parts[3], ".")
+								fmt.Printf("通过阿里 DNS 解析到 SRV 记录: %s:%d\n", resolvedHost, p)
+								return resolvedHost, uint16(p), nil
+							}
+						}
+					}
+				}
+			} else {
+				fmt.Println("阿里 DNS 未返回 SRV 记录，尝试标准 DNS 解析...")
+			}
+		}
+	} else {
+		fmt.Printf("阿里 DNS 解析失败: %v，尝试标准 DNS 解析...\n", err)
+	}
+
+	// 如果阿里 DNS 解析失败或没有结果，使用原有的标准 DNS 解析
+	fmt.Println("尝试标准 DNS 解析 SRV 记录...")
+	_, addrs, err := net.LookupSRV("minecraft", "tcp", name)
+	if err != nil || len(addrs) == 0 {
+		fmt.Printf("未找到 SRV 记录，使用默认配置: %s:25565\n", name)
+		return name, 25565, nil // 无 SRV 记录时使用默认端口
+	}
+	resolvedHost := strings.TrimSuffix(addrs[0].Target, ".")
+	fmt.Printf("通过标准 DNS 解析到 SRV 记录: %s:%d\n", resolvedHost, addrs[0].Port)
+	return resolvedHost, addrs[0].Port, nil
 }
 
 // Minecraft 颜色代码映射到 ANSI 终端颜色代码
@@ -296,15 +352,6 @@ func resolveHostToIP(host string) string {
 		return "无法解析 IP 地址"
 	}
 	return ips[0]
-}
-
-// 尝试解析 Minecraft 的 SRV 记录获取实际主机名与端口
-func resolveMinecraftSRV(name string) (host string, port uint16, err error) {
-	_, addrs, err := net.LookupSRV("minecraft", "tcp", name)
-	if err != nil || len(addrs) == 0 {
-		return name, 25565, nil // 无 SRV 记录时使用默认端口
-	}
-	return strings.TrimSuffix(addrs[0].Target, "."), addrs[0].Port, nil
 }
 
 func main() {
