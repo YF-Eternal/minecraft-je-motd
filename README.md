@@ -1,0 +1,35 @@
+# minecraft-je-motd
+[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat)](http://choosealicense.com/licenses/mit/)
+
+`minecraft-je-motd` 是一个用于获取并显示 **Minecraft Java 版** 服务器 MOTD 的命令行工具。它支持 JSON 格式的 MOTD 解析，包括颜色代码、格式化样式和多行消息的渲染。
+
+![minecraft-je-motd](images/motd.png)
+
+## 功能特性
+
+- **获取 MOTD**：从 Minecraft 服务器检索并显示 MOTD。
+- **JSON 解析**：支持 JSON 格式的 MOTD 解析与显示。
+- **颜色与格式支持**：支持 Minecraft 的颜色代码与文本格式渲染。
+- **延迟显示**：显示与服务器的延迟（Ping）时间，单位为毫秒。
+- **调试模式**：使用 `--debug` 可查看原始 JSON 和详细的调试信息。
+
+## 使用许可
+
+本项目使用 **MIT License** 开源许可协议，详情请参阅 [LICENSE](LICENSE) 文件。
+
+## 快速开始
+
+### 1. 安装
+
+1. 从 [Releases](https://github.com/YF-Eternal/minecraft-je-motd/releases) 页面下载最新版发布包。
+2. 将压缩包解压至任意目录。
+3. 可选：将可执行文件添加到系统 PATH 以便全局使用。
+
+### 2. 使用方式
+
+#### 获取服务器 MOTD
+
+运行以下命令获取服务器的 MOTD 信息：
+
+```bash
+motd.exe mc.example.com:25565
