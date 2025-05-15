@@ -1,13 +1,12 @@
 // 作者: YF_Eternal
 // 项目: minecraft-je-motd
-// 版本: 1.0.2-HTTPS-DNS
+// 版本: 1.0.3-HTTPS-DNS
 // 许可: MIT
 // 描述: 一个命令行工具，用于获取并展示 Minecraft Java 版服务器的 MOTD 信息。
 // 仓库: https://github.com/YF-Eternal/minecraft-je-motd/
 
 package main
 
-// 导入所需标准库
 import (
 	"bytes"
 	"encoding/binary"
@@ -23,7 +22,7 @@ import (
 	"time"
 )
 
-// 添加用于解析阿里 DNS JSON 响应的结构体
+// DNSResponse 添加用于解析阿里 DNS JSON 响应的结构体
 type DNSResponse struct {
 	Status int `json:"Status"`
 	Answer []struct {
@@ -32,7 +31,7 @@ type DNSResponse struct {
 	} `json:"Answer"`
 }
 
-// 表示聊天组件的结构体（用于解析 JSON）
+// ChatComponent 表示聊天组件结构体 (用于 JSON 解析)
 type ChatComponent struct {
 	Text  string               `json:"text,omitempty"`  // 文本内容
 	Color string               `json:"color,omitempty"` // 文本颜色
@@ -387,12 +386,12 @@ func main() {
 		fmt.Println("")
 		fmt.Println("关于:")
 		fmt.Println("    minecraft-je-motd")
-		fmt.Println("    版本: 1.0.2-HTTPS-DNS")
+		fmt.Println("    版本: 1.0.3-HTTPS-DNS")
 		fmt.Println("    作者: kcraftnetwork {YF_Eternal + kakcraft}")
 		fmt.Println("    Github: https://github.com/YF-Eternal/minecraft-je-motd/")
 	}
 
-	// 手动处理 --help 参数
+	// 处理 --help 参数
 	for _, arg := range os.Args {
 		if arg == "--help" {
 			flag.Usage()
@@ -420,13 +419,6 @@ func main() {
 			os.Exit(1)
 		}
 		port = uint16(p)
-	} else {
-		// 未指定端口，尝试解析 SRV 记录
-		srvHost, srvPort, err := resolveMinecraftSRV(host)
-		if err == nil {
-			host = srvHost
-			port = srvPort
-		}
 	}
 
 	ip := resolveHostToIP(host)
@@ -434,7 +426,7 @@ func main() {
 
 	jsonStr, ping, err := getServerStatus(host, uint16(port))
 	if err != nil {
-		fmt.Println("连接错误:", err)
+		fmt.Println("\n无法连接到服务器:", err)
 		os.Exit(1)
 	}
 
