@@ -1,13 +1,12 @@
 // 作者: YF_Eternal
 // 项目: minecraft-je-motd
-// 版本: 1.0.2
+// 版本: 1.0.3
 // 许可: MIT
 // 描述: 一个命令行工具，用于获取并展示 Minecraft Java 版服务器的 MOTD 信息。
 // 仓库: https://github.com/YF-Eternal/minecraft-je-motd/
 
 package main
 
-// 导入所需标准库
 import (
 	"bytes"
 	"encoding/binary"
@@ -22,14 +21,14 @@ import (
 	"time"
 )
 
-// 表示聊天组件的结构体（用于解析 JSON）
+// ChatComponent 表示聊天组件结构体 (用于 JSON 解析)
 type ChatComponent struct {
 	Text  string               `json:"text,omitempty"`  // 文本内容
 	Color string               `json:"color,omitempty"` // 文本颜色
 	Extra []ChatComponentMixed `json:"extra,omitempty"` // 嵌套组件
 }
 
-// 聊天组件的多种可能格式（组件或纯字符串）
+// 聊天组件的多种可能格式 (组件或纯字符串)
 type ChatComponentMixed struct {
 	TextComponent *ChatComponent // 若为组件
 	RawString     string         // 若为纯字符串
@@ -197,7 +196,7 @@ func parseChatComponentColored(component ChatComponent) string {
 	return builder.String()
 }
 
-// 写入 VarInt 编码（Minecraft 协议所用）
+// 写入 VarInt 编码 (Minecraft 协议所用)
 func writeVarInt(buf *bytes.Buffer, value int) {
 	for {
 		temp := byte(value & 0x7F)
@@ -292,7 +291,7 @@ func getServerStatus(host string, port uint16) (string, time.Duration, error) {
 // 将域名解析为 IP 地址
 func resolveHostToIP(host string) string {
 	ips, err := net.LookupHost(host)
-	if err != nil {
+	if err != nil || len(ips) == 0 {
 		return "无法解析 IP 地址"
 	}
 	return ips[0]
@@ -308,20 +307,13 @@ func resolveMinecraftSRV(name string) (host string, port uint16, err error) {
 }
 
 func main() {
-	var (
-		debug     bool
-		showColor bool
-		showText  bool
-	)
+	var debug, showColor, showText bool
 
-	// 定义命令行参数
-	flag.BoolVar(&debug, "debug", false, "显示全部 MOTD 信息（包括原始 JSON、彩色样式、纯文本）")
+	flag.BoolVar(&debug, "debug", false, "显示全部 MOTD 信息")
 	flag.BoolVar(&showColor, "color", false, "")
 	flag.BoolVar(&showColor, "c", false, "")
 	flag.BoolVar(&showText, "text", false, "")
 	flag.BoolVar(&showText, "t", false, "")
-
-	// 自定义帮助信息
 	flag.Usage = func() {
 		fmt.Println("用法:")
 		fmt.Println("    motd [选项] <地址>[:端口]")
@@ -340,19 +332,16 @@ func main() {
 		fmt.Println("")
 		fmt.Println("关于:")
 		fmt.Println("    minecraft-je-motd")
-		fmt.Println("    版本: 1.0.2")
+		fmt.Println("    版本: 1.0.3")
 		fmt.Println("    作者: YF_Eternal")
 		fmt.Println("    Github: https://github.com/YF-Eternal/minecraft-je-motd/")
 	}
-
-	// 手动处理 --help 参数
 	for _, arg := range os.Args {
 		if arg == "--help" {
 			flag.Usage()
 			os.Exit(0)
 		}
 	}
-
 	flag.Parse()
 
 	if len(flag.Args()) < 1 {
@@ -385,9 +374,9 @@ func main() {
 	ip := resolveHostToIP(host)
 	fmt.Printf("正在尝试获取 %s [%s:%d] 的 MOTD 信息...\n", host, ip, port)
 
-	jsonStr, ping, err := getServerStatus(host, uint16(port))
+	jsonStr, ping, err := getServerStatus(host, port)
 	if err != nil {
-		fmt.Println("连接错误:", err)
+		fmt.Println("\n无法连接到服务器:", err)
 		os.Exit(1)
 	}
 
@@ -422,7 +411,7 @@ func main() {
 		var description ChatComponent
 		descJson, _ := json.Marshal(desc)
 		if err := json.Unmarshal(descJson, &description); err != nil {
-			fmt.Println("描述内容解析失败:", err)
+			fmt.Println("描述解析失败:", err)
 			os.Exit(1)
 		}
 		if debug {
@@ -435,7 +424,6 @@ func main() {
 		} else {
 			fmt.Println("\n" + parseChatComponentColored(description))
 		}
-
 	case string:
 		// 字符串类型（带 § 的旧版）
 		if debug {
@@ -448,13 +436,12 @@ func main() {
 		} else {
 			fmt.Println("\n" + parseLegacyColorString(desc))
 		}
-
 	default:
-		fmt.Println("未知描述格式，跳过 MOTD 解析。")
+		fmt.Println("未知的描述格式")
 	}
 
 	// 显示服务器基本信息
-	fmt.Printf("\n版本: %s (协议号: %d)\n", data.Version.Name, data.Version.Protocol)
-	fmt.Printf("玩家: %d / %d\n", data.Players.Online, data.Players.Max)
-	fmt.Printf("延迟: %dms\n", ping.Milliseconds())
+	fmt.Printf("\n服务端: %s | 协议: %d\n", data.Version.Name, data.Version.Protocol)
+	fmt.Printf("在线人数: %d / %d\n", data.Players.Online, data.Players.Max)
+	fmt.Printf("Ping 延迟: %dms\n", ping.Milliseconds())
 }
