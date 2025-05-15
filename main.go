@@ -1,6 +1,6 @@
 // 作者: YF_Eternal
 // 项目: minecraft-je-motd
-// 版本: 1.0.3
+// 版本: 1.0.4
 // 许可: MIT
 // 描述: 一个命令行工具，用于获取并展示 Minecraft Java 版服务器的 MOTD 信息。
 // 仓库: https://github.com/YF-Eternal/minecraft-je-motd/
@@ -332,8 +332,8 @@ func main() {
 		fmt.Println("")
 		fmt.Println("关于:")
 		fmt.Println("    minecraft-je-motd")
-		fmt.Println("    版本: 1.0.3")
-		fmt.Println("    作者: YF_Eternal")
+		fmt.Println("    版本: 1.0.4")
+		fmt.Println("    作者: kcraftnetwork {YF_Eternal + kakcraft}")
 		fmt.Println("    Github: https://github.com/YF-Eternal/minecraft-je-motd/")
 	}
 	for _, arg := range os.Args {
@@ -374,7 +374,16 @@ func main() {
 	ip := resolveHostToIP(host)
 	fmt.Printf("正在尝试获取 %s [%s:%d] 的 MOTD 信息...\n", host, ip, port)
 
+	fmt.Print("正在连接服务器中")
+	go func() {
+		for {
+			fmt.Print(".")
+			time.Sleep(1000 * time.Millisecond)
+		}
+	}()
+
 	jsonStr, ping, err := getServerStatus(host, port)
+	fmt.Println()
 	if err != nil {
 		fmt.Println("\n无法连接到服务器:", err)
 		os.Exit(1)
