@@ -1,8 +1,8 @@
-// 作者: YF_Eternal
+// 作者: YF_Eternal, kaiserverkcraft
 // 项目: minecraft-je-motd
-// 版本: 1.0.4
+// 版本: 1.0.3
 // 许可: MIT
-// 描述: 一个命令行工具，用于获取并展示 Minecraft Java 版服务器的 MOTD 信息。
+// 描述: 一个命令行工具, 用于获取并展示 Minecraft Java 版服务器的 MOTD 信息。
 // 仓库: https://github.com/YF-Eternal/minecraft-je-motd/
 
 package main
@@ -78,50 +78,6 @@ var legacyColorMap = map[rune]string{
 
 const ansiReset = "\033[0m" // ANSI 重置样式
 
-// Windows Console 颜色定义
-var windowsConsoleColors = []struct {
-	r, g, b uint8
-	code    string
-}{
-	{0, 0, 0, "\033[30m"},       // 黑色
-	{128, 0, 0, "\033[31m"},     // 深红
-	{0, 128, 0, "\033[32m"},     // 深绿
-	{128, 128, 0, "\033[33m"},   // 深黄
-	{0, 0, 128, "\033[34m"},     // 深蓝
-	{128, 0, 128, "\033[35m"},   // 深紫
-	{0, 128, 128, "\033[36m"},   // 深青
-	{192, 192, 192, "\033[37m"}, // 灰色
-	{128, 128, 128, "\033[90m"}, // 深灰
-	{255, 0, 0, "\033[91m"},     // 红色
-	{0, 255, 0, "\033[92m"},     // 绿色
-	{255, 255, 0, "\033[93m"},   // 黄色
-	{0, 0, 255, "\033[94m"},     // 蓝色
-	{255, 0, 255, "\033[95m"},   // 紫色
-	{0, 255, 255, "\033[96m"},   // 青色
-	{255, 255, 255, "\033[97m"}, // 白色
-}
-
-// RGB颜色到Windows Console颜色的转换
-func rgbToConsoleColor(r, g, b uint8) string {
-	minDist := uint32(255*255*3) + 1
-	bestCode := "\033[37m" // 默认为灰色
-
-	for _, color := range windowsConsoleColors {
-		// 计算RGB距离
-		dr := int32(r) - int32(color.r)
-		dg := int32(g) - int32(color.g)
-		db := int32(b) - int32(color.b)
-		dist := uint32(dr*dr + dg*dg + db*db)
-
-		if dist < minDist {
-			minDist = dist
-			bestCode = color.code
-		}
-	}
-
-	return bestCode
-}
-
 // 将十六进制颜色值转换为 ANSI 颜色代码
 func hexToANSI(hex string) string {
 	if len(hex) != 7 || hex[0] != '#' {
@@ -144,7 +100,7 @@ func getColorANSI(color string) string {
 	return ""
 }
 
-// 解析传统样式颜色字符串（带有 § 符号的）
+// 解析传统样式颜色字符串 (带有 § 符号的)
 func parseLegacyColorString(s string) string {
 	var builder strings.Builder
 	runes := []rune(s)
@@ -234,15 +190,25 @@ func readVarInt(r io.Reader) (int, error) {
 }
 
 // 建立连接并获取服务器状态 JSON 与响应延迟
-func getServerStatus(host string, port uint16) (string, time.Duration, error) {
+func getServerStatus(host string, port uint16, timeout time.Duration) (string, time.Duration, error) {
 	address := fmt.Sprintf("[%s]:%d", host, port)
-	conn, err := net.DialTimeout("tcp", address, 5*time.Second)
+
+	var conn net.Conn
+	var err error
+	if timeout == 0 {
+		conn, err = net.Dial("tcp", address)
+	} else {
+		conn, err = net.DialTimeout("tcp", address, timeout)
+	}
 	if err != nil {
 		return "", 0, err
 	}
 	defer conn.Close()
 
-	// 构建握手数据包
+	if timeout > 0 {
+		conn.SetDeadline(time.Now().Add(timeout))
+	}
+
 	var handshake bytes.Buffer
 	handshake.WriteByte(0x00)
 	writeVarInt(&handshake, 754) // 协议版本
@@ -255,15 +221,18 @@ func getServerStatus(host string, port uint16) (string, time.Duration, error) {
 	var packet bytes.Buffer
 	writeVarInt(&packet, handshake.Len())
 	packet.Write(handshake.Bytes())
-	conn.Write(packet.Bytes())
+	_, err = conn.Write(packet.Bytes())
+	if err != nil {
+		return "", 0, err
+	}
 
 	// 发送状态请求
-	conn.Write([]byte{0x01, 0x00})
+	_, err = conn.Write([]byte{0x01, 0x00})
+	if err != nil {
+		return "", 0, err
+	}
 
-	// 计时开始
-	start := time.Now()
-
-	// 接收响应
+	// 读取服务器状态 JSON
 	length, err := readVarInt(conn)
 	if err != nil {
 		return "", 0, err
@@ -273,7 +242,6 @@ func getServerStatus(host string, port uint16) (string, time.Duration, error) {
 	if err != nil {
 		return "", 0, err
 	}
-	ping := time.Since(start)
 
 	dataBuf := bytes.NewBuffer(data)
 	_, _ = readVarInt(dataBuf)        // 丢弃 Packet ID
@@ -285,6 +253,44 @@ func getServerStatus(host string, port uint16) (string, time.Duration, error) {
 		return "", 0, err
 	}
 
+	// 纯网络延迟ping测量开始
+	start := time.Now()
+
+	var pingPacket bytes.Buffer
+	writeVarInt(&pingPacket, 9)                                                   // 包长度 1字节包ID + 8字节时间戳 = 9
+	pingPacket.WriteByte(0x01)                                                    // 包 ID Ping
+	binary.Write(&pingPacket, binary.BigEndian, int64(time.Now().UnixNano()/1e6)) // 时间戳 (毫秒)
+
+	_, err = conn.Write(pingPacket.Bytes())
+	if err != nil {
+		return "", 0, err
+	}
+
+	// 读取 pong 包
+	_, err = readVarInt(conn) // 读取包长度
+	if err != nil {
+		return "", 0, err
+	}
+
+	packetID, err := readVarInt(conn) // 读取包ID
+	if err != nil {
+		return "", 0, err
+	}
+
+	if packetID != 0x01 {
+		return "", 0, fmt.Errorf("ping 响应包 ID 错误, 收到 ID %d", packetID)
+	}
+
+	// 读取 pong 时间戳 (8字节)
+	var pongTime int64
+	err = binary.Read(conn, binary.BigEndian, &pongTime)
+	if err != nil {
+		return "", 0, err
+	}
+
+	ping := time.Since(start)
+
+	// 返回状态 JSON 和 ping 延迟
 	return string(jsonData), ping, nil
 }
 
@@ -308,12 +314,15 @@ func resolveMinecraftSRV(name string) (host string, port uint16, err error) {
 
 func main() {
 	var debug, showColor, showText bool
+	var timeout int
 
 	flag.BoolVar(&debug, "debug", false, "显示全部 MOTD 信息")
 	flag.BoolVar(&showColor, "color", false, "")
 	flag.BoolVar(&showColor, "c", false, "")
-	flag.BoolVar(&showText, "text", false, "")
-	flag.BoolVar(&showText, "t", false, "")
+	flag.BoolVar(&showText, "plain", false, "")
+	flag.BoolVar(&showText, "p", false, "")
+	flag.IntVar(&timeout, "timeout", 5, "设置连接超时秒数 (0 表示直到 TCP 超时)")
+	flag.IntVar(&timeout, "t", 5, "设置连接超时秒数 (0 表示直到 TCP 超时)")
 	flag.Usage = func() {
 		fmt.Println("用法:")
 		fmt.Println("    motd [选项] <地址>[:端口]")
@@ -322,26 +331,22 @@ func main() {
 		fmt.Println("选项:")
 		fmt.Println("    --debug           显示全部 MOTD 信息(包括原始 JSON、彩色样式、纯文本)")
 		fmt.Println("    -c, --color       显示彩色 MOTD 样式(默认)")
-		fmt.Println("    -t, --text        显示纯文本 MOTD 样式(适合老旧终端)")
+		fmt.Println("    -p, --plain       显示纯文本 MOTD 样式(适合老旧终端)")
+		fmt.Println("    -t, --timeout     设置连接超时等待时间 (默认: 5s, 输入 0 表示直到 TCP 连接超时)")
 		fmt.Println("    -h, --help        显示此帮助信息")
 		fmt.Println("")
 		fmt.Println("示例:")
 		fmt.Println("    motd mc.example.com:25565")
 		fmt.Println("    motd --debug mc.example.com")
-		fmt.Println("    motd -t mc.example.com")
+		fmt.Println("    motd -t 3 mc.example.com")
 		fmt.Println("")
 		fmt.Println("关于:")
 		fmt.Println("    minecraft-je-motd")
-		fmt.Println("    版本: 1.0.4")
-		fmt.Println("    作者: kcraftnetwork {YF_Eternal + kakcraft}")
+		fmt.Println("    版本: 1.0.3")
+		fmt.Println("    作者: YF_Eternal, kaiserverkcraft")
 		fmt.Println("    Github: https://github.com/YF-Eternal/minecraft-je-motd/")
 	}
-	for _, arg := range os.Args {
-		if arg == "--help" {
-			flag.Usage()
-			os.Exit(0)
-		}
-	}
+
 	flag.Parse()
 
 	if len(flag.Args()) < 1 {
@@ -374,16 +379,7 @@ func main() {
 	ip := resolveHostToIP(host)
 	fmt.Printf("正在尝试获取 %s [%s:%d] 的 MOTD 信息...\n", host, ip, port)
 
-	fmt.Print("正在连接服务器中")
-	go func() {
-		for {
-			fmt.Print(".")
-			time.Sleep(1000 * time.Millisecond)
-		}
-	}()
-
-	jsonStr, ping, err := getServerStatus(host, port)
-	fmt.Println()
+	jsonStr, ping, err := getServerStatus(host, port, time.Duration(timeout)*time.Second)
 	if err != nil {
 		fmt.Println("\n无法连接到服务器:", err)
 		os.Exit(1)
@@ -407,7 +403,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 提前打印原始 JSON（debug 模式下）
+	// 提前打印原始 JSON (debug 模式下)
 	if debug {
 		fmt.Println("\n原始 JSON 数据:")
 		fmt.Println(jsonStr)
@@ -434,7 +430,7 @@ func main() {
 			fmt.Println("\n" + parseChatComponentColored(description))
 		}
 	case string:
-		// 字符串类型（带 § 的旧版）
+		// 字符串类型 (带 § 的旧版)
 		if debug {
 			fmt.Println("\n纯文本 MOTD:")
 			fmt.Println(desc)
