@@ -55,7 +55,7 @@ motd mc.example.com
     motd mc.example.com:25565
     motd --debug mc.example.com
     motd -t 3 mc.example.com
-    motd mc.example.com -o D:/1.png
+    motd mc.example.com -i D:/1.png
 ```
 ### 3. 开发说明
 本项目使用 GO 1.24.3 版本开发。
