@@ -1,6 +1,6 @@
 // 作者: YF_Eternal, kaiserverkcraft
 // 项目: minecraft-je-motd
-// 版本: 1.0.3
+// 版本: 1.0.4
 // 许可: MIT
 // 描述: 一个命令行工具, 用于获取并展示 Minecraft Java 版服务器的 MOTD 信息。
 // 仓库: https://github.com/YF-Eternal/minecraft-je-motd/
@@ -9,6 +9,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"flag"
@@ -272,7 +273,7 @@ func getServerStatus(host string, port uint16, timeout time.Duration) (string, t
 		return "", 0, err
 	}
 
-	packetID, err := readVarInt(conn) // 读取包ID
+	packetID, err := readVarInt(conn) // 读取包 ID
 	if err != nil {
 		return "", 0, err
 	}
@@ -315,7 +316,26 @@ func resolveMinecraftSRV(name string) (host string, port uint16, err error) {
 func main() {
 	var debug, showColor, showText bool
 	var timeout int
+	var outputPath string
 
+	// 解析 --icon 参数
+	processedArgs := []string{}
+	rawArgs := os.Args[1:]
+	for i := 0; i < len(rawArgs); i++ {
+		arg := rawArgs[i]
+		if arg == "-i" || arg == "--icon" {
+			if i+1 < len(rawArgs) && !strings.HasPrefix(rawArgs[i+1], "-") {
+				outputPath = rawArgs[i+1]
+				i++
+			} else {
+				outputPath = "AUTO"
+			}
+			continue
+		}
+		processedArgs = append(processedArgs, arg)
+	}
+
+	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	flag.BoolVar(&debug, "debug", false, "显示全部 MOTD 信息")
 	flag.BoolVar(&showColor, "color", false, "")
 	flag.BoolVar(&showColor, "c", false, "")
@@ -325,7 +345,7 @@ func main() {
 	flag.IntVar(&timeout, "t", 5, "设置连接超时秒数 (0 表示直到 TCP 超时)")
 	flag.Usage = func() {
 		fmt.Println("用法:")
-		fmt.Println("    motd [选项] <地址>[:端口]")
+		fmt.Println("    motd [选项] <地址>[:端口] [附加参数]")
 		fmt.Println("    (如未指定端口，默认使用 25565)")
 		fmt.Println("")
 		fmt.Println("选项:")
@@ -335,40 +355,44 @@ func main() {
 		fmt.Println("    -t, --timeout     设置连接超时等待时间 (默认: 5s, 输入 0 表示直到 TCP 连接超时)")
 		fmt.Println("    -h, --help        显示此帮助信息")
 		fmt.Println("")
+		fmt.Println("附加参数:")
+		fmt.Println("    -i, --icon [路径]      导出服务器图标为 PNG 文件")
+		fmt.Println("                             不指定路径时将保存到桌面 <地址>.png")
+		fmt.Println("")
 		fmt.Println("示例:")
 		fmt.Println("    motd mc.example.com:25565")
 		fmt.Println("    motd --debug mc.example.com")
 		fmt.Println("    motd -t 3 mc.example.com")
+		fmt.Println("    motd mc.example.com -i D:/1.png")
 		fmt.Println("")
 		fmt.Println("关于:")
 		fmt.Println("    minecraft-je-motd")
-		fmt.Println("    版本: 1.0.3")
+		fmt.Println("    版本: 1.0.4")
 		fmt.Println("    作者: YF_Eternal, kaiserverkcraft")
 		fmt.Println("    Github: https://github.com/YF-Eternal/minecraft-je-motd/")
 	}
+	flag.CommandLine.Parse(processedArgs)
 
-	flag.Parse()
-
-	if len(flag.Args()) < 1 {
+	if flag.NArg() < 1 {
 		flag.Usage()
 		os.Exit(1)
 	}
 
-	addr := flag.Args()[0]
+	addr := flag.Arg(0)
 	parts := strings.Split(addr, ":")
 	host := parts[0]
 	var port uint16 = 25565
 
-	// 如果指定了端口，进行解析
+	// 如果指定了端口, 进行解析
 	if len(parts) == 2 {
 		p, err := strconv.ParseUint(parts[1], 10, 16)
 		if err != nil {
-			fmt.Println("无效的端口:", err)
+			fmt.Println("无效的端口: ", err)
 			os.Exit(1)
 		}
 		port = uint16(p)
 	} else {
-		// 未指定端口，尝试解析 SRV 记录
+		// 未指定端口, 尝试解析 SRV 记录
 		srvHost, srvPort, err := resolveMinecraftSRV(host)
 		if err == nil {
 			host = srvHost
@@ -396,6 +420,7 @@ func main() {
 			Max    int `json:"max"`
 		} `json:"players"`
 		Description interface{} `json:"description"`
+		Favicon     string      `json:"favicon"`
 	}
 	err = json.Unmarshal([]byte(jsonStr), &data)
 	if err != nil {
@@ -449,4 +474,41 @@ func main() {
 	fmt.Printf("\n服务端: %s | 协议: %d\n", data.Version.Name, data.Version.Protocol)
 	fmt.Printf("在线人数: %d / %d\n", data.Players.Online, data.Players.Max)
 	fmt.Printf("Ping 延迟: %dms\n", ping.Milliseconds())
+
+	// 图标导出功能
+	if outputPath != "" && data.Favicon != "" {
+		iconBase64 := strings.TrimPrefix(data.Favicon, "data:image/png;base64,")
+		decoded, err := decodeBase64(iconBase64)
+		if err != nil {
+			fmt.Println("图标解码失败: ", err)
+			return
+		}
+
+		// 处理路径
+		savePath := outputPath
+		if outputPath == "AUTO" {
+			filename := fmt.Sprintf("%s.png", host)
+			desktop := getDesktopPath()
+			savePath = desktop + "/" + filename
+		}
+
+		err = os.WriteFile(savePath, decoded, 0644)
+		if err != nil {
+			fmt.Println("图标保存失败: ", err)
+		} else {
+			fmt.Println("图标已保存为: ", savePath)
+		}
+	}
+}
+
+func decodeBase64(data string) ([]byte, error) {
+	return io.ReadAll(base64.NewDecoder(base64.StdEncoding, strings.NewReader(data)))
+}
+
+func getDesktopPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "."
+	}
+	return home + "/Desktop"
 }

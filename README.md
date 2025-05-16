@@ -37,7 +37,7 @@ motd mc.example.com
 ```
 ```text
 用法:
-    motd [选项] <地址>[:端口]
+    motd [选项] <地址>[:端口] [附加参数]
     (如未指定端口，默认使用 25565)
 
 选项:
@@ -46,6 +46,16 @@ motd mc.example.com
     -p, --plain       显示纯文本 MOTD 样式(适合老旧终端)
     -t, --timeout     设置连接超时等待时间 (默认: 5s, 输入 0 表示直到 TCP 连接超时)
     -h, --help        显示此帮助信息
+
+附加参数:
+    -i, --icon [路径]      导出服务器图标为 PNG 文件
+                             不指定路径时将保存到桌面 <地址>.png
+
+ 示例:
+    motd mc.example.com:25565
+    motd --debug mc.example.com
+    motd -t 3 mc.example.com
+    motd mc.example.com -o D:/1.png
 ```
 ### 3. 开发说明
 本项目使用 GO 1.24.3 版本开发。
