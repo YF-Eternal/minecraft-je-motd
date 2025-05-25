@@ -53,6 +53,7 @@ motd mc.example.com
 
  示例:
     motd mc.example.com:25565
+    motd [fe80:0:0:0:0:0:0:1]:25565
     motd --debug mc.example.com
     motd -t 3 mc.example.com
     motd mc.example.com -i D:/1.png

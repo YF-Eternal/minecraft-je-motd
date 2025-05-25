@@ -1,6 +1,6 @@
 // 作者: YF_Eternal, kaiserverkcraft
 // 项目: minecraft-je-motd
-// 版本: 1.0.4
+// 版本: 1.0.5
 // 许可: MIT
 // 描述: 一个命令行工具, 用于获取并展示 Minecraft Java 版服务器的 MOTD 信息。
 // 仓库: https://github.com/YF-Eternal/minecraft-je-motd/
@@ -313,6 +313,14 @@ func resolveMinecraftSRV(name string) (host string, port uint16, err error) {
 	return strings.TrimSuffix(addrs[0].Target, "."), addrs[0].Port, nil
 }
 
+func resolveSRVWithFallback(host string) (string, uint16) {
+	srvHost, srvPort, err := resolveMinecraftSRV(host)
+	if err != nil {
+		return host, 25565
+	}
+	return srvHost, srvPort
+}
+
 func main() {
 	var debug, showColor, showText bool
 	var timeout int
@@ -361,13 +369,14 @@ func main() {
 		fmt.Println("")
 		fmt.Println("示例:")
 		fmt.Println("    motd mc.example.com:25565")
+		fmt.Println("    motd [fe80:0:0:0:0:0:0:1]:25565")
 		fmt.Println("    motd --debug mc.example.com")
 		fmt.Println("    motd -t 3 mc.example.com")
 		fmt.Println("    motd mc.example.com -i D:/1.png")
 		fmt.Println("")
 		fmt.Println("关于:")
 		fmt.Println("    minecraft-je-motd")
-		fmt.Println("    版本: 1.0.4")
+		fmt.Println("    版本: 1.0.5")
 		fmt.Println("    作者: YF_Eternal, kaiserverkcraft")
 		fmt.Println("    Github: https://github.com/YF-Eternal/minecraft-je-motd/")
 	}
@@ -379,25 +388,35 @@ func main() {
 	}
 
 	addr := flag.Arg(0)
-	parts := strings.Split(addr, ":")
-	host := parts[0]
-	var port uint16 = 25565
+	var host string
+	var portStr string
+	var port uint16
 
-	// 如果指定了端口, 进行解析
-	if len(parts) == 2 {
-		p, err := strconv.ParseUint(parts[1], 10, 16)
+	host, portStr = "", ""
+	port = uint16(25565) // 默认端口
+
+	if strings.Contains(addr, ":") {
+		// 是 IPv6 或域名:port，尝试解析
+		if strings.Count(addr, ":") > 1 && !strings.HasPrefix(addr, "[") {
+			addr = "[" + addr + "]"
+		}
+
+		var err error
+		host, portStr, err = net.SplitHostPort(addr)
 		if err != nil {
-			fmt.Println("无效的端口: ", err)
-			os.Exit(1)
+			// 若仍解析失败，说明没有端口，尝试使用 SRV 或默认端口
+			host = strings.Trim(addr, "[]")
+			host, port = resolveSRVWithFallback(host)
+		} else {
+			p, err := strconv.Atoi(portStr)
+			if err == nil {
+				port = uint16(p)
+			}
 		}
-		port = uint16(p)
 	} else {
-		// 未指定端口, 尝试解析 SRV 记录
-		srvHost, srvPort, err := resolveMinecraftSRV(host)
-		if err == nil {
-			host = srvHost
-			port = srvPort
-		}
+		// 只有主机名，尝试使用 SRV 或默认端口
+		host = addr
+		host, port = resolveSRVWithFallback(host)
 	}
 
 	ip := resolveHostToIP(host)
@@ -487,7 +506,8 @@ func main() {
 		// 处理路径
 		savePath := outputPath
 		if outputPath == "AUTO" {
-			filename := fmt.Sprintf("%s.png", host)
+			safeHost := strings.ReplaceAll(host, ":", "_")
+			filename := fmt.Sprintf("%s.png", safeHost)
 			desktop := getDesktopPath()
 			savePath = desktop + "/" + filename
 		}
