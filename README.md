@@ -22,8 +22,8 @@
 
 ### 1. 安装
 
-1. 从 [Releases](https://github.com/YF-Eternal/minecraft-je-motd/releases) 页面下载最新版发布包。
-2. 将压缩包解压至任意目录。
+1. 从 [Releases](https://github.com/YF-Eternal/minecraft-je-motd/releases) 页面下载最新版EXE。
+2. 将 motd.exe 放至任意目录。
 3. 可选: 将可执行文件添加到系统 PATH 以便全局使用。
 
 ### 2. 使用方式
